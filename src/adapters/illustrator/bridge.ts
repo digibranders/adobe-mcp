@@ -334,11 +334,7 @@ function createAppleScriptRunner(scriptPath: string, appPath: string | null): st
   set jsFile to POSIX file ${toJsStringLiteral(scriptPath)}
   tell application ${appTarget}
     activate
-    try
-      do javascript jsFile
-    on error errMsg number errNum
-      open jsFile
-    end try
+    do javascript jsFile
   end tell
 end run
 `;
@@ -359,7 +355,12 @@ async function waitForResultFile(path: string, timeoutMs: number): Promise<Scrip
 }
 
 function parseResultEnvelope(text: string): ScriptEnvelope {
-  return JSON.parse(text) as ScriptEnvelope;
+  const parsed: unknown = JSON.parse(text);
+  if (typeof parsed !== "object" || parsed === null || !("ok" in parsed) || typeof (parsed as Record<string, unknown>).ok !== "boolean") {
+    throw new Error("Invalid Illustrator result envelope: missing or non-boolean 'ok' field.");
+  }
+
+  return parsed as ScriptEnvelope;
 }
 
 export class IllustratorBridge {
@@ -395,6 +396,7 @@ export class IllustratorBridge {
         createAppleScriptRunner(wrapperPath, this.config.executablePath),
         "utf8"
       );
+      const executionStart = Date.now();
       const processResult = await runProcess("osascript", [runnerPath], request.timeoutMs);
       if (processResult.exitCode !== 0) {
         this.logger.warn("Illustrator AppleScript runner exited non-zero", {
@@ -403,7 +405,9 @@ export class IllustratorBridge {
         });
       }
 
-      const envelope = await waitForResultFile(resultPath, request.timeoutMs);
+      const elapsed = Date.now() - executionStart;
+      const remainingMs = Math.max(request.timeoutMs - elapsed, 5_000);
+      const envelope = await waitForResultFile(resultPath, remainingMs);
       if (!envelope.ok) {
         throw new Error(`${envelope.error.name}: ${envelope.error.message}`);
       }

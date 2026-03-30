@@ -30,13 +30,14 @@ export function registerIllustratorTools(
 
   server.tool(
     "illustrator_get_status",
+    "Check Illustrator availability, detected version, and bridge configuration.",
     {
       forceRefresh: z.boolean().optional()
     },
     async ({ forceRefresh }) => toToolResult(await registry.getStatus("illustrator", forceRefresh ?? false))
   );
 
-  server.tool("illustrator_list_supported_operations", {}, async (_args) => {
+  server.tool("illustrator_list_supported_operations", "List all Illustrator operations supported by the bridge.", {}, async (_args) => {
     const status = await registry.getStatus("illustrator");
     return toToolResult({
       appId: "illustrator",
@@ -46,6 +47,7 @@ export function registerIllustratorTools(
 
   server.tool(
     "illustrator_create_document",
+    "Create a new Illustrator document with optional dimensions, artboards, color space, and title.",
     {
       width: z.number().positive().optional(),
       height: z.number().positive().optional(),
@@ -81,6 +83,7 @@ export function registerIllustratorTools(
 
   server.tool(
     "illustrator_open_document",
+    "Open an Illustrator document from a file path on disk.",
     {
       documentPath: z.string().min(1),
       timeoutMs: illustratorTimeoutSchema,
@@ -106,6 +109,7 @@ export function registerIllustratorTools(
 
   server.tool(
     "illustrator_inspect_document",
+    "Get metadata for an Illustrator document (name, dimensions, artboards, layers, page items).",
     {
       documentPath: z.string().min(1).optional(),
       timeoutMs: illustratorTimeoutSchema,
@@ -129,6 +133,7 @@ export function registerIllustratorTools(
 
   server.tool(
     "illustrator_export_document",
+    "Export an Illustrator document to PNG, JPEG, SVG, PDF, AI, or EPS format.",
     {
       documentPath: z.string().min(1).optional(),
       outputPath: z.string().min(1),
@@ -172,6 +177,7 @@ export function registerIllustratorTools(
 
   server.tool(
     "illustrator_run_script",
+    "Execute custom ExtendScript/JavaScript code inside Illustrator with access to the full DOM.",
     {
       scriptSource: z.string().min(1),
       input: jsonObjectSchema.optional(),

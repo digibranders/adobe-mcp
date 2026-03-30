@@ -22,7 +22,7 @@ export function createMcpServer(
     version: config.serverVersion
   });
 
-  server.tool("adobe_desktop_health", {}, async (_args) => {
+  server.tool("adobe_desktop_health", "Get MCP server health info including name, version, and configuration.", {}, async (_args) => {
     return toToolResult({
       name: config.serverName,
       version: config.serverVersion,
@@ -33,6 +33,7 @@ export function createMcpServer(
 
   server.tool(
     "adobe_desktop_get_app_status",
+    "Get runtime status for a specific Adobe app (availability, version, bridge strategy).",
     {
       appId: adobeAppIdSchema,
       forceRefresh: z.boolean().optional()
@@ -42,6 +43,7 @@ export function createMcpServer(
 
   server.tool(
     "adobe_desktop_list_apps",
+    "List all Adobe apps with their runtime status and availability.",
     {
       forceRefresh: z.boolean().optional()
     },
@@ -51,7 +53,7 @@ export function createMcpServer(
       })
   );
 
-  server.tool("adobe_desktop_get_capability_matrix", {}, async (_args) => {
+  server.tool("adobe_desktop_get_capability_matrix", "Get the full capability matrix for all Adobe apps (automation surfaces, bridge strategies, feasibility).", {}, async (_args) => {
     return toToolResult({
       capabilityMatrix: registry.getCapabilityMatrix()
     });

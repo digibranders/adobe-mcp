@@ -36,6 +36,7 @@ export function registerPhotoshopTools(
 
   server.tool(
     "photoshop_get_status",
+    "Check Photoshop availability, bridge connection status, and detected version.",
     {
       forceRefresh: z.boolean().optional()
     },
@@ -48,7 +49,7 @@ export function registerPhotoshopTools(
     }
   );
 
-  server.tool("photoshop_list_supported_operations", {}, async (_args) => {
+  server.tool("photoshop_list_supported_operations", "List all Photoshop operations supported by the bridge.", {}, async (_args) => {
     const status = await registry.getStatus("photoshop");
     return toToolResult({
       appId: "photoshop",
@@ -56,7 +57,7 @@ export function registerPhotoshopTools(
     });
   });
 
-  server.tool("photoshop_bridge_status", {}, async (_args) => {
+  server.tool("photoshop_bridge_status", "Get the HTTP bridge connection status and UXP plugin session info.", {}, async (_args) => {
     const bridgeStatus = await getBridgeStatusPayload(bridge);
     return toToolResult({
       appId: "photoshop",
@@ -67,6 +68,7 @@ export function registerPhotoshopTools(
 
   server.tool(
     "photoshop_list_documents",
+    "List all open documents in Photoshop with metadata (title, dimensions, resolution).",
     {
       timeoutMs: timeoutSchema
     },
@@ -79,6 +81,7 @@ export function registerPhotoshopTools(
 
   server.tool(
     "photoshop_create_document",
+    "Create a new Photoshop document with specified dimensions, resolution, and name.",
     {
       width: z.number().positive(),
       height: z.number().positive(),
@@ -104,6 +107,7 @@ export function registerPhotoshopTools(
 
   server.tool(
     "photoshop_open_document",
+    "Open a document in Photoshop from a file path on disk.",
     {
       documentPath: z.string().min(1),
       timeoutMs: timeoutSchema
@@ -123,6 +127,7 @@ export function registerPhotoshopTools(
 
   server.tool(
     "photoshop_inspect_active_document",
+    "Get metadata and layer structure of the active Photoshop document.",
     {
       timeoutMs: timeoutSchema
     },
@@ -135,6 +140,7 @@ export function registerPhotoshopTools(
 
   server.tool(
     "photoshop_export_active_document",
+    "Export the active Photoshop document to PNG, JPG, or PSD format.",
     {
       outputPath: z.string().min(1),
       format: z.enum(["png", "jpg", "psd"]),
@@ -158,6 +164,7 @@ export function registerPhotoshopTools(
 
   server.tool(
     "photoshop_add_text_layer",
+    "Add a text layer to the active Photoshop document with specified content, font size, and position.",
     {
       contents: z.string().min(1),
       name: z.string().min(1).optional(),

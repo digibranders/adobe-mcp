@@ -53,11 +53,20 @@ interface PollWaiter {
   readonly timer: NodeJS.Timeout;
 }
 
+const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB
+
 function readRequestBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = "";
+    let bytes = 0;
     request.setEncoding("utf8");
     request.on("data", (chunk: string) => {
+      bytes += Buffer.byteLength(chunk, "utf8");
+      if (bytes > MAX_BODY_BYTES) {
+        request.destroy();
+        reject(new Error(`Request body exceeds ${MAX_BODY_BYTES} byte limit.`));
+        return;
+      }
       body += chunk;
     });
     request.on("end", () => resolve(body));
@@ -68,6 +77,7 @@ function readRequestBody(request: IncomingMessage): Promise<string> {
 function json(statusCode: number, response: ServerResponse, payload: JsonObject): void {
   response.statusCode = statusCode;
   response.setHeader("content-type", "application/json; charset=utf-8");
+  response.setHeader("access-control-allow-origin", "*");
   response.end(`${JSON.stringify(payload)}\n`);
 }
 
@@ -197,7 +207,7 @@ export class PhotoshopPluginBridge {
 
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {
-        if (error !== undefined) {
+        if (error != null) {
           reject(error);
           return;
         }

@@ -149,7 +149,9 @@ async function executeCommand(commandEnvelope) {
 
     case "open_document":
       return await core.executeAsModal(async () => {
-        const document = await app.open(String(payload.documentPath));
+        const fs = storage.localFileSystem;
+        const entry = await fs.getEntryWithUrl(fileUrlFromPath(String(payload.documentPath)));
+        const document = await app.open(entry);
         return {
           document: summarizeDocument(document)
         };
@@ -180,11 +182,23 @@ async function executeCommand(commandEnvelope) {
         });
         const doc = app.activeDocument;
         const format = String(payload.format);
+        if (!doc.saveAs || typeof doc.saveAs !== "object") {
+          throw new Error("Photoshop saveAs API is not available. Requires Photoshop 25.0 or later.");
+        }
         if (format === "png") {
+          if (typeof doc.saveAs.png !== "function") {
+            throw new Error("doc.saveAs.png is not available in this Photoshop version.");
+          }
           await doc.saveAs.png(entry, {}, true);
         } else if (format === "jpg") {
+          if (typeof doc.saveAs.jpg !== "function") {
+            throw new Error("doc.saveAs.jpg is not available in this Photoshop version.");
+          }
           await doc.saveAs.jpg(entry, payload.quality ? { quality: Number(payload.quality) } : { quality: 12 }, true);
         } else if (format === "psd") {
+          if (typeof doc.saveAs.psd !== "function") {
+            throw new Error("doc.saveAs.psd is not available in this Photoshop version.");
+          }
           await doc.saveAs.psd(entry, {}, false);
         } else {
           throw new Error(`Unsupported export format: ${format}`);
@@ -201,15 +215,49 @@ async function executeCommand(commandEnvelope) {
         throw new Error("No active Photoshop document.");
       }
       return await core.executeAsModal(async () => {
+        const { action } = require("photoshop");
         const document = app.activeDocument;
-        const layer = await document.createTextLayer({
-          contents: String(payload.contents),
-          ...(typeof payload.name === "string" ? { name: payload.name } : {}),
-          ...(payload.fontSize ? { fontSize: Number(payload.fontSize) } : {}),
-          ...(payload.x !== undefined && payload.y !== undefined
-            ? { position: { x: Number(payload.x), y: Number(payload.y) } }
-            : {})
-        });
+        const textContents = String(payload.contents);
+        const fontSize = payload.fontSize ? Number(payload.fontSize) : 24;
+        const posX = payload.x !== undefined ? Number(payload.x) : 50;
+        const posY = payload.y !== undefined ? Number(payload.y) : 50;
+
+        await action.batchPlay([
+          {
+            _obj: "make",
+            _target: [{ _ref: "textLayer" }],
+            using: {
+              _obj: "textLayer",
+              textKey: textContents,
+              textShape: [{
+                _obj: "textShape",
+                char: { _enum: "char", _value: "box" },
+                bounds: {
+                  _obj: "bounds",
+                  top: { _unit: "pixelsUnit", _value: posY },
+                  left: { _unit: "pixelsUnit", _value: posX },
+                  bottom: { _unit: "pixelsUnit", _value: posY + 200 },
+                  right: { _unit: "pixelsUnit", _value: posX + 400 }
+                }
+              }],
+              textStyleRange: [{
+                _obj: "textStyleRange",
+                from: 0,
+                to: textContents.length,
+                textStyle: {
+                  _obj: "textStyle",
+                  size: { _unit: "pointsUnit", _value: fontSize }
+                }
+              }]
+            }
+          }
+        ], {});
+
+        const layer = document.activeLayers[0];
+        if (typeof payload.name === "string" && layer) {
+          layer.name = payload.name;
+        }
+
         return {
           document: summarizeDocument(document),
           layer: layer
@@ -286,13 +334,14 @@ async function pollOnce(config) {
 }
 
 async function runBridgeLoop() {
-  const config = readConfig();
+  let config = readConfig();
   if (!bridgeLoopState.sessionId) {
     bridgeLoopState.sessionId = await registerWithBridge(config);
   }
 
   while (bridgeLoopState.running) {
     try {
+      config = readConfig();
       await pollOnce(config);
     } catch (error) {
       setStatus("Bridge error", {

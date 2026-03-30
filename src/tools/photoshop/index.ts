@@ -12,6 +12,20 @@ function createBridge(config: ServerConfig, logger: Logger): PhotoshopPluginBrid
   return new PhotoshopPluginBridge(config.apps.photoshop, logger);
 }
 
+async function getBridgeStatusPayload(bridge: PhotoshopPluginBridge) {
+  try {
+    await bridge.ensureStarted();
+    return {
+      bridge: bridge.getStatusPayload()
+    };
+  } catch (error) {
+    return {
+      bridge: bridge.getStatusPayload(),
+      bridgeStartupError: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
 export function registerPhotoshopTools(
   server: McpServer,
   registry: AdapterRegistry,
@@ -26,10 +40,10 @@ export function registerPhotoshopTools(
       forceRefresh: z.boolean().optional()
     },
     async ({ forceRefresh }) => {
-      await bridge.ensureStarted();
+      const bridgeStatus = await getBridgeStatusPayload(bridge);
       return toToolResult({
         runtime: await registry.getStatus("photoshop", forceRefresh ?? false),
-        bridge: bridge.getStatus()
+        ...bridgeStatus
       });
     }
   );
@@ -43,10 +57,10 @@ export function registerPhotoshopTools(
   });
 
   server.tool("photoshop_bridge_status", {}, async (_args) => {
-    await bridge.ensureStarted();
+    const bridgeStatus = await getBridgeStatusPayload(bridge);
     return toToolResult({
       appId: "photoshop",
-      bridge: bridge.getStatusPayload(),
+      ...bridgeStatus,
       connectionConfig: bridge.getPublicConfig()
     });
   });

@@ -36,6 +36,7 @@ interface PendingCommand {
   readonly resolve: (result: JsonObject) => void;
   readonly reject: (error: Error) => void;
   readonly timer: NodeJS.Timeout;
+  leasedSessionId: string | null;
 }
 
 interface PluginSession {
@@ -121,6 +122,7 @@ export interface PhotoshopBridgeStatus {
   readonly activeSession: PluginSession | null;
   readonly pendingCommands: number;
   readonly bridgeUrl: string;
+  readonly lastStartError: string | null;
 }
 
 export class PhotoshopPluginBridge {
@@ -128,6 +130,7 @@ export class PhotoshopPluginBridge {
   private readonly token: string;
   private server: Server | null = null;
   private startPromise: Promise<void> | null = null;
+  private lastStartError: string | null = null;
   private readonly queue: PendingCommand[] = [];
   private readonly sessions = new Map<string, PluginSession>();
   private readonly waiters = new Map<string, PollWaiter>();
@@ -157,33 +160,17 @@ export class PhotoshopPluginBridge {
       return;
     }
 
-    this.startPromise = new Promise<void>((resolve, reject) => {
-      const server = createServer(async (request, response) => {
-        try {
-          await this.handleRequest(request, response);
-        } catch (error) {
-          this.logger.error("Photoshop bridge request failed", {
-            error: error instanceof Error ? error.message : String(error)
-          });
-          json(500, response, {
-            ok: false,
-            error: error instanceof Error ? error.message : String(error)
-          });
-        }
-      });
-
-      server.on("error", (error) => {
-        reject(error);
-      });
-
-      server.listen(this.port, "127.0.0.1", () => {
+    this.startPromise = this.startListeningServer()
+      .then((server) => {
         this.server = server;
-        this.logger.info("Photoshop bridge listening", {
-          port: this.port
-        });
-        resolve();
+        this.lastStartError = null;
+      })
+      .catch((error: unknown) => {
+        this.server = null;
+        this.startPromise = null;
+        this.lastStartError = error instanceof Error ? error.message : String(error);
+        throw error;
       });
-    });
 
     await this.startPromise;
   }
@@ -195,6 +182,7 @@ export class PhotoshopPluginBridge {
 
     const server = this.server;
     this.server = null;
+    this.startPromise = null;
 
     for (const pending of this.queue.splice(0, this.queue.length)) {
       clearTimeout(pending.timer);
@@ -228,7 +216,8 @@ export class PhotoshopPluginBridge {
       connected: activeSession !== null,
       activeSession,
       pendingCommands: this.queue.length,
-      bridgeUrl: `http://127.0.0.1:${this.port}/photoshop-bridge`
+      bridgeUrl: `http://127.0.0.1:${this.port}/photoshop-bridge`,
+      lastStartError: this.lastStartError
     };
   }
 
@@ -241,8 +230,38 @@ export class PhotoshopPluginBridge {
       connected: status.connected,
       activeSession: sessionToJson(status.activeSession),
       pendingCommands: status.pendingCommands,
-      bridgeUrl: status.bridgeUrl
+      bridgeUrl: status.bridgeUrl,
+      lastStartError: status.lastStartError
     };
+  }
+
+  protected async startListeningServer(): Promise<Server> {
+    return await new Promise<Server>((resolve, reject) => {
+      const server = createServer(async (request, response) => {
+        try {
+          await this.handleRequest(request, response);
+        } catch (error) {
+          this.logger.error("Photoshop bridge request failed", {
+            error: error instanceof Error ? error.message : String(error)
+          });
+          json(500, response, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      });
+
+      server.on("error", (error) => {
+        reject(error);
+      });
+
+      server.listen(this.port, "127.0.0.1", () => {
+        this.logger.info("Photoshop bridge listening", {
+          port: this.port
+        });
+        resolve(server);
+      });
+    });
   }
 
   public async runCommand(
@@ -273,7 +292,8 @@ export class PhotoshopPluginBridge {
         },
         resolve,
         reject,
-        timer
+        timer,
+        leasedSessionId: null
       };
 
       this.queue.push(pending);
@@ -326,6 +346,7 @@ export class PhotoshopPluginBridge {
       this.touchSession(sessionId);
       this.resolveCommand(
         asString(body.requestId, ""),
+        sessionId,
         body.ok === true
           ? {
               ok: true,
@@ -373,7 +394,17 @@ export class PhotoshopPluginBridge {
     }
   }
 
-  private registerSession(body: JsonObject): PluginSession {
+  protected registerSession(body: JsonObject): PluginSession {
+    for (const waiter of this.waiters.values()) {
+      clearTimeout(waiter.timer);
+      waiter.resolve(null);
+    }
+    this.waiters.clear();
+    this.sessions.clear();
+    for (const pending of this.queue) {
+      pending.leasedSessionId = null;
+    }
+
     const sessionId = randomUUID();
     const session: PluginSession = {
       sessionId,
@@ -393,7 +424,7 @@ export class PhotoshopPluginBridge {
     return session;
   }
 
-  private touchSession(sessionId: string): PluginSession {
+  protected touchSession(sessionId: string): PluginSession {
     const session = this.sessions.get(sessionId);
     if (session === undefined) {
       throw new Error("Unknown Photoshop plugin session.");
@@ -403,7 +434,7 @@ export class PhotoshopPluginBridge {
     return session;
   }
 
-  private getActiveSession(): PluginSession | null {
+  protected getActiveSession(): PluginSession | null {
     let active: PluginSession | null = null;
     const cutoff = Date.now() - 60_000;
     for (const session of this.sessions.values()) {
@@ -419,10 +450,19 @@ export class PhotoshopPluginBridge {
     return active;
   }
 
-  private async nextCommand(sessionId: string): Promise<BridgeCommand | null> {
+  protected async nextCommand(sessionId: string): Promise<BridgeCommand | null> {
     const pending = this.queue[0];
     if (pending !== undefined) {
-      return pending.command;
+      if (pending.leasedSessionId === null) {
+        pending.leasedSessionId = sessionId;
+        return pending.command;
+      }
+
+      if (pending.leasedSessionId === sessionId) {
+        return pending.command;
+      }
+
+      return null;
     }
 
     return await new Promise<BridgeCommand | null>((resolve) => {
@@ -444,19 +484,34 @@ export class PhotoshopPluginBridge {
     }
 
     for (const [sessionId, waiter] of this.waiters.entries()) {
+      const pending = this.queue[0];
+      if (pending === undefined) {
+        clearTimeout(waiter.timer);
+        this.waiters.delete(sessionId);
+        waiter.resolve(null);
+        continue;
+      }
+
+      if (pending.leasedSessionId === null) {
+        pending.leasedSessionId = sessionId;
+      }
+
+      if (pending.leasedSessionId !== sessionId) {
+        continue;
+      }
+
       clearTimeout(waiter.timer);
       this.waiters.delete(sessionId);
-      const pending = this.queue[0];
-      if (pending !== undefined) {
-        waiter.resolve(pending.command);
-      } else {
-        waiter.resolve(null);
-      }
+      waiter.resolve(pending.command);
       break;
     }
   }
 
-  private resolveCommand(requestId: string, envelope: ResultEnvelope): void {
+  protected resolveCommand(
+    requestId: string,
+    sessionId: string,
+    envelope: ResultEnvelope
+  ): void {
     const index = this.queue.findIndex((pending) => pending.command.requestId === requestId);
     if (index === -1) {
       throw new Error(`Unknown Photoshop request id: ${requestId}`);
@@ -466,6 +521,11 @@ export class PhotoshopPluginBridge {
     if (pending === undefined) {
       throw new Error(`Unable to resolve Photoshop request id: ${requestId}`);
     }
+
+    if (pending.leasedSessionId !== sessionId) {
+      throw new Error(`Photoshop request ${requestId} is leased to a different session.`);
+    }
+
     clearTimeout(pending.timer);
 
     if (envelope.ok) {

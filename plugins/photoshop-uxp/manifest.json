@@ -1,0 +1,45 @@
+{
+  "manifestVersion": 5,
+  "id": "com.digibranders.adobe-desktop-mcp.photoshop",
+  "name": "Adobe Desktop MCP Photoshop Bridge",
+  "version": "0.1.0",
+  "main": "index.html",
+  "host": {
+    "app": "PS",
+    "minVersion": "24.2.0"
+  },
+  "entrypoints": [
+    {
+      "type": "panel",
+      "id": "adobe-desktop-mcp-panel",
+      "label": {
+        "default": "Adobe MCP"
+      },
+      "minimumSize": {
+        "width": 280,
+        "height": 320
+      },
+      "maximumSize": {
+        "width": 1200,
+        "height": 1200
+      },
+      "preferredDockedSize": {
+        "width": 320,
+        "height": 420
+      },
+      "preferredFloatingSize": {
+        "width": 360,
+        "height": 480
+      }
+    }
+  ],
+  "requiredPermissions": {
+    "network": {
+      "domains": [
+        "http://127.0.0.1",
+        "http://localhost"
+      ]
+    },
+    "localFileSystem": "fullAccess"
+  }
+}

@@ -18,17 +18,20 @@ const descriptor: AppCapabilityDescriptor = {
   exportSupport: true,
   bestBridgeStrategy: "hybrid",
   majorLimitations: [
-    "Legacy scripting and modern UXP features are split across different runtimes.",
-    "A robust bidirectional control plane is cleaner through a plugin."
+    "Current implementation phase is UXP companion-plugin first.",
+    "The plugin must be loaded in Photoshop through UXP Developer Tool before MCP tools can execute."
   ],
   feasibilityScore: 7.5,
   recommendedVersionTarget: "Current Creative Cloud release with UXP support",
   v1Operations: [
     "discover_host",
+    "bridge_status",
+    "list_documents",
+    "create_document",
     "open_document",
-    "inspect_layers",
-    "run_legacy_script",
-    "export_document"
+    "inspect_active_document",
+    "export_active_document",
+    "add_text_layer"
   ]
 };
 

@@ -58,7 +58,7 @@ export function createMcpServer(
   });
 
   registerIllustratorTools(server, registry, config, logger);
-  registerPhotoshopTools(server, registry);
+  registerPhotoshopTools(server, registry, config, logger);
   registerInDesignTools(server, registry);
   registerAcrobatTools(server, registry);
   registerAfterEffectsTools(server, registry);

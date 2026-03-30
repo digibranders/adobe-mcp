@@ -7,7 +7,9 @@
       ],
       "env": {
         "ADOBE_MCP_LOG_LEVEL": "info",
-        "ADOBE_MCP_ILLUSTRATOR_PATH": "/Applications/Adobe Illustrator 2025/Adobe Illustrator.app"
+        "ADOBE_MCP_ILLUSTRATOR_PATH": "/Applications/Adobe Illustrator 2025/Adobe Illustrator.app",
+        "ADOBE_MCP_PHOTOSHOP_PLUGIN_PORT": "47123",
+        "ADOBE_MCP_PHOTOSHOP_PLUGIN_TOKEN": "adobe-mcp-dev-token"
       }
     }
   }

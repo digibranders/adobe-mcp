@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Adobe MCP Photoshop Bridge</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Adobe MCP</h1>
+      <p class="subtitle">Photoshop companion bridge for <code>adobe-desktop-mcp</code></p>
+
+      <label>
+        <span>Bridge Base URL</span>
+        <input id="bridgeUrl" type="text" value="http://127.0.0.1:47123/photoshop-bridge" />
+      </label>
+
+      <label>
+        <span>Bridge Token</span>
+        <input id="bridgeToken" type="password" value="adobe-mcp-dev-token" />
+      </label>
+
+      <div class="actions">
+        <button id="saveConfig">Save</button>
+        <button id="startBridge">Start Bridge</button>
+        <button id="stopBridge">Stop Bridge</button>
+      </div>
+
+      <section class="status">
+        <h2>Status</h2>
+        <pre id="statusText">Idle</pre>
+      </section>
+    </main>
+
+    <script src="main.js"></script>
+  </body>
+</html>

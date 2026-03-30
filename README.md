@@ -5,7 +5,8 @@
 Current phase:
 
 - Illustrator: real bridge on macOS
-- Photoshop, InDesign, Acrobat, After Effects, Premiere Pro: discovery and capability reporting only
+- Photoshop: real companion UXP plugin plus localhost MCP bridge
+- InDesign, Acrobat, After Effects, Premiere Pro: discovery and capability reporting only
 
 This is not yet a fully operational multi-app Adobe automation stack. It is a production-oriented MCP core plus a real first host integration.
 
@@ -14,6 +15,7 @@ This is not yet a fully operational multi-app Adobe automation stack. It is a pr
 - stdio MCP server based on `@modelcontextprotocol/sdk`
 - typed config, logging, process orchestration, temp-file handling, and adapter registry
 - real macOS Illustrator automation through AppleScript invoking ExtendScript wrappers
+- real Photoshop localhost bridge through a UXP companion plugin
 - capability matrix and status tools for all target Adobe hosts
 - packageable local artifact for Claude Desktop and Codex-compatible clients
 
@@ -82,6 +84,13 @@ export ADOBE_MCP_ILLUSTRATOR_PATH="/Applications/Adobe Illustrator 2025/Adobe Il
 ```
 
 If you omit it, the server will try to discover Illustrator under `/Applications`.
+
+For the Photoshop plugin bridge, the defaults are:
+
+```bash
+export ADOBE_MCP_PHOTOSHOP_PLUGIN_PORT=47123
+export ADOBE_MCP_PHOTOSHOP_PLUGIN_TOKEN=adobe-mcp-dev-token
+```
 
 ## Claude Desktop Setup
 
@@ -211,6 +220,109 @@ Arguments:
 Expected:
 - `/tmp/illustrator-mcp-test.png` exists
 
+## Photoshop UXP Plugin Setup
+
+The Photoshop path is different from Illustrator.
+
+Photoshop does not run directly from AppleScript in this implementation. Instead:
+
+1. Start the MCP server.
+2. Load the UXP plugin from `plugins/photoshop-uxp`.
+3. Open the `Adobe MCP` panel inside Photoshop.
+4. Confirm the bridge URL and token match the MCP server env vars.
+5. Click `Start Bridge`.
+6. Run Photoshop MCP tools from Claude Desktop or Codex.
+
+### Install the Photoshop Plugin
+
+1. Open Adobe UXP Developer Tool.
+2. Choose `Add Plugin`.
+3. Select the folder [plugins/photoshop-uxp](/Users/siddiqueahmed/Desktop/AI/claude-adobe-mcp/plugins/photoshop-uxp).
+4. Launch the plugin in Photoshop.
+5. Open the `Adobe MCP` panel.
+6. Click `Start Bridge`.
+
+See [plugins/photoshop-uxp/README.md](/Users/siddiqueahmed/Desktop/AI/claude-adobe-mcp/plugins/photoshop-uxp/README.md) for the focused plugin instructions.
+
+### Photoshop Manual Test Flow
+
+1. Check plugin bridge status
+
+Tool:
+- `photoshop_bridge_status`
+
+Expected:
+- bridge listening on `127.0.0.1`
+- after starting the panel bridge, `connected: true`
+
+2. Check full Photoshop status
+
+Tool:
+- `photoshop_get_status`
+
+Expected:
+- bridge section present
+- runtime section present
+
+3. Create a document
+
+Tool:
+- `photoshop_create_document`
+
+Arguments:
+
+```json
+{
+  "width": 1200,
+  "height": 800,
+  "name": "MCP Photoshop Test"
+}
+```
+
+4. Inspect the active document
+
+Tool:
+- `photoshop_inspect_active_document`
+
+Arguments:
+
+```json
+{}
+```
+
+5. Add a text layer
+
+Tool:
+- `photoshop_add_text_layer`
+
+Arguments:
+
+```json
+{
+  "contents": "Hello from MCP",
+  "fontSize": 42,
+  "x": 140,
+  "y": 180
+}
+```
+
+6. Export the active document
+
+Tool:
+- `photoshop_export_active_document`
+
+Arguments:
+
+```json
+{
+  "outputPath": "/tmp/photoshop-mcp-test.png",
+  "format": "png"
+}
+```
+
+Expected:
+- `/tmp/photoshop-mcp-test.png` exists
+
 ## Current Tool Surface
 
 - `adobe_desktop_health`
@@ -226,6 +338,13 @@ Expected:
 - `illustrator_run_script`
 - `photoshop_get_status`
 - `photoshop_list_supported_operations`
+- `photoshop_bridge_status`
+- `photoshop_list_documents`
+- `photoshop_create_document`
+- `photoshop_open_document`
+- `photoshop_inspect_active_document`
+- `photoshop_export_active_document`
+- `photoshop_add_text_layer`
 - `indesign_get_status`
 - `indesign_list_supported_operations`
 - `acrobat_get_status`
@@ -239,6 +358,12 @@ Expected:
 
 - `illustrator_get_status` says unavailable:
   Check `ADOBE_MCP_ILLUSTRATOR_PATH` and make sure Illustrator is installed.
+- `photoshop_bridge_status` shows not connected:
+  Open the Photoshop panel and click `Start Bridge`.
+- Photoshop bridge auth fails:
+  Make sure the panel token matches `ADOBE_MCP_PHOTOSHOP_PLUGIN_TOKEN`.
+- Photoshop commands fail immediately:
+  The UXP plugin may not have file/network permissions or Photoshop may not have an active document when required.
 - Illustrator does not open:
   macOS may be blocking Apple Events or Automation permissions.
 - The tool hangs waiting for results:
@@ -251,7 +376,8 @@ Expected:
 ## Important Limitations
 
 - Real automation is implemented only for Illustrator on macOS in this phase.
-- I have validated build, startup, packaging, and tool wiring, but not end-to-end execution against a live Illustrator install on this machine.
+- Real Photoshop automation is implemented through a UXP companion plugin, but I have not live-validated the plugin inside a running Photoshop instance on this machine.
+- I have validated build, startup, packaging, and tool wiring, but not end-to-end execution against live Adobe hosts in this environment.
 - The other Adobe hosts are not falsely advertised as operational yet.
 
 ## Development

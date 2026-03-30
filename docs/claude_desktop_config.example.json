@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "adobe-desktop-mcp": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/adobe-desktop-mcp/dist/index.js"
+      ],
+      "env": {
+        "ADOBE_MCP_LOG_LEVEL": "info",
+        "ADOBE_MCP_ILLUSTRATOR_PATH": "/Applications/Adobe Illustrator 2025/Adobe Illustrator.app"
+      }
+    }
+  }
+}

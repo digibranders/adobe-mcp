@@ -1,0 +1,46 @@
+{
+  "name": "adobe-desktop-mcp",
+  "version": "0.1.0",
+  "description": "Production-grade multi-application Adobe desktop MCP server for Claude Desktop and Codex-compatible agents.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "adobe-desktop-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "skill",
+    "plugins"
+  ],
+  "scripts": {
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "mcp",
+    "adobe",
+    "illustrator",
+    "photoshop",
+    "indesign",
+    "acrobat",
+    "after-effects",
+    "premiere"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.5",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

@@ -1,0 +1,8 @@
+src
+scripts
+docs
+node_modules
+coverage
+tsconfig.json
+tsconfig.build.json
+.gitignore

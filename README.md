@@ -23,14 +23,17 @@ This is not yet a fully operational multi-app Adobe automation stack. It is a pr
 
 - macOS
 - Node.js 20.11+ or newer
-- Adobe Illustrator installed
+- Adobe Illustrator installed (for Illustrator tools)
+- Adobe Photoshop 25.0+ installed (for Photoshop tools)
+- Adobe UXP Developer Tool (for loading the Photoshop companion plugin)
 - Claude Desktop or another MCP client
 - macOS permission to allow terminal/host app automation of Illustrator when prompted
 
 ## Install From Source
 
 ```bash
-cd /Users/siddiqueahmed/Desktop/AI/claude-adobe-mcp
+git clone https://github.com/digibranders/adobe-mcp.git
+cd adobe-mcp
 npm install
 npm run typecheck
 npm test
@@ -43,11 +46,7 @@ This produces the MCP server entrypoint at:
 
 ## Package Artifact
 
-An installable tarball has also been generated:
-
-- `adobe-desktop-mcp-0.1.0.tgz`
-
-You can regenerate it with:
+You can generate an installable tarball with:
 
 ```bash
 npm pack
@@ -55,7 +54,7 @@ npm pack
 
 ## Environment Configuration
 
-Copy or adapt [.env.example](/Users/siddiqueahmed/Desktop/AI/claude-adobe-mcp/.env.example).
+Copy or adapt `.env.example`.
 
 Supported environment variables:
 
@@ -94,9 +93,9 @@ export ADOBE_MCP_PHOTOSHOP_PLUGIN_TOKEN=adobe-mcp-dev-token
 
 ## Claude Desktop Setup
 
-Use [docs/claude_desktop_config.example.json](/Users/siddiqueahmed/Desktop/AI/claude-adobe-mcp/docs/claude_desktop_config.example.json) as the starting point.
+Use `docs/claude_desktop_config.example.json` as the starting point.
 
-Example:
+Example (replace `/path/to/adobe-mcp` with the actual cloned directory):
 
 ```json
 {
@@ -104,7 +103,7 @@ Example:
     "adobe-desktop-mcp": {
       "command": "node",
       "args": [
-        "/Users/siddiqueahmed/Desktop/AI/claude-adobe-mcp/dist/index.js"
+        "/path/to/adobe-mcp/dist/index.js"
       ],
       "env": {
         "ADOBE_MCP_LOG_LEVEL": "info",
@@ -128,7 +127,7 @@ Then:
 If your Codex client supports local MCP stdio servers, register:
 
 - command: `node`
-- args: `/Users/siddiqueahmed/Desktop/AI/claude-adobe-mcp/dist/index.js`
+- args: `/path/to/adobe-mcp/dist/index.js`
 - env: `ADOBE_MCP_ILLUSTRATOR_PATH` and optionally `ADOBE_MCP_LOG_LEVEL`
 
 The same tool flow used in Claude Desktop should work in Codex-compatible clients.
@@ -235,14 +234,16 @@ Photoshop does not run directly from AppleScript in this implementation. Instead
 
 ### Install the Photoshop Plugin
 
+Requires **Photoshop 25.0 or later** (2024 release).
+
 1. Open Adobe UXP Developer Tool.
 2. Choose `Add Plugin`.
-3. Select the folder [plugins/photoshop-uxp](/Users/siddiqueahmed/Desktop/AI/claude-adobe-mcp/plugins/photoshop-uxp).
+3. Select the `plugins/photoshop-uxp` folder from this repo.
 4. Launch the plugin in Photoshop.
 5. Open the `Adobe MCP` panel.
 6. Click `Start Bridge`.
 
-See [plugins/photoshop-uxp/README.md](/Users/siddiqueahmed/Desktop/AI/claude-adobe-mcp/plugins/photoshop-uxp/README.md) for the focused plugin instructions.
+See `plugins/photoshop-uxp/README.md` for the focused plugin instructions.
 
 ### Photoshop Manual Test Flow
 
@@ -375,10 +376,10 @@ Expected:
 
 ## Important Limitations
 
-- Real automation is implemented only for Illustrator on macOS in this phase.
-- Real Photoshop automation is implemented through a UXP companion plugin, but I have not live-validated the plugin inside a running Photoshop instance on this machine.
-- I have validated build, startup, packaging, and tool wiring, but not end-to-end execution against live Adobe hosts in this environment.
-- The other Adobe hosts are not falsely advertised as operational yet.
+- Real automation is implemented for Illustrator (macOS) and Photoshop (UXP companion plugin).
+- Photoshop automation requires Photoshop 25.0+ and the UXP plugin loaded via UXP Developer Tool.
+- InDesign, Acrobat, After Effects, and Premiere Pro are discovery and capability reporting only — no real automation yet.
+- Illustrator automation is macOS-only (AppleScript + ExtendScript).
 
 ## Development
 

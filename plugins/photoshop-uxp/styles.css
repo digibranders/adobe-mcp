@@ -12,10 +12,113 @@ body {
   gap: 12px;
 }
 
-.subtitle {
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+h1 {
   margin: 0;
-  color: #c7c7c7;
+  font-size: 16px;
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12px;
+  color: #c7c7c7;
+}
+
+.indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.indicator.connected {
+  background: #34c759;
+  box-shadow: 0 0 6px #34c759;
+}
+
+.indicator.connecting {
+  background: #ffcc00;
+  box-shadow: 0 0 6px #ffcc00;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.indicator.error {
+  background: #ff3b30;
+  box-shadow: 0 0 6px #ff3b30;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.status {
+  background: #181818;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+  color: #b8f2d1;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn-primary {
+  border: none;
+  border-radius: 4px;
+  padding: 8px 14px;
+  background: #1473e6;
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-secondary {
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 8px 14px;
+  background: #2c2c2c;
+  color: #e0e0e0;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-text {
+  border: none;
+  background: none;
+  color: #1473e6;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 8px 4px;
+  margin-left: auto;
+}
+
+.advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid #333;
+  padding-top: 12px;
 }
 
 label {
@@ -31,31 +134,5 @@ input {
   border: 1px solid #444;
   border-radius: 4px;
   padding: 8px;
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-}
-
-button {
-  border: none;
-  border-radius: 4px;
-  padding: 8px 10px;
-  background: #1473e6;
-  color: white;
-}
-
-.status {
-  background: #181818;
-  border: 1px solid #333;
-  border-radius: 6px;
-  padding: 10px;
-}
-
-pre {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 11px;
-  color: #b8f2d1;
+  font-size: 12px;
 }

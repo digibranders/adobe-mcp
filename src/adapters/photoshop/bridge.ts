@@ -14,7 +14,32 @@ type PhotoshopCommandName =
   | "open_document"
   | "inspect_active_document"
   | "export_active_document"
-  | "add_text_layer";
+  | "add_text_layer"
+  | "run_script"
+  | "resize_image"
+  | "crop_document"
+  | "duplicate_layer"
+  | "delete_layer"
+  | "set_layer_properties"
+  | "flatten_image"
+  | "merge_visible"
+  | "apply_adjustment"
+  | "run_action"
+  | "add_shape_layer"
+  | "get_layer_info"
+  | "canvas_snapshot"
+  | "save_document"
+  | "close_document"
+  | "set_active_document"
+  | "undo"
+  | "redo"
+  | "apply_filter"
+  | "select_all"
+  | "deselect"
+  | "select_color_range"
+  | "transform_layer"
+  | "fill_color"
+  | "copy_layer_to_document";
 
 interface BridgeCommand {
   readonly requestId: string;

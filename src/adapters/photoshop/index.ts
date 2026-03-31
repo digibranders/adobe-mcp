@@ -18,10 +18,12 @@ const descriptor: AppCapabilityDescriptor = {
   exportSupport: true,
   bestBridgeStrategy: "hybrid",
   majorLimitations: [
-    "Current implementation phase is UXP companion-plugin first.",
-    "The plugin must be loaded in Photoshop through UXP Developer Tool before MCP tools can execute."
+    "The UXP companion plugin must be installed once via the install script or UXP Developer Tool.",
+    "Generative Fill/Expand are cloud-gated and not accessible via automation.",
+    "3D layers and video timeline are not yet exposed.",
+    "Canvas snapshots are static exports, not real-time previews."
   ],
-  feasibilityScore: 7.5,
+  feasibilityScore: 9.0,
   recommendedVersionTarget: "Current Creative Cloud release with UXP support",
   v1Operations: [
     "discover_host",
@@ -31,7 +33,32 @@ const descriptor: AppCapabilityDescriptor = {
     "open_document",
     "inspect_active_document",
     "export_active_document",
-    "add_text_layer"
+    "add_text_layer",
+    "run_script",
+    "resize_image",
+    "crop_document",
+    "duplicate_layer",
+    "delete_layer",
+    "set_layer_properties",
+    "flatten_image",
+    "merge_visible",
+    "apply_adjustment",
+    "run_action",
+    "add_shape_layer",
+    "get_layer_info",
+    "canvas_snapshot",
+    "save_document",
+    "close_document",
+    "set_active_document",
+    "undo",
+    "redo",
+    "apply_filter",
+    "select_all",
+    "deselect",
+    "select_color_range",
+    "transform_layer",
+    "fill_color",
+    "copy_layer_to_document"
   ]
 };
 

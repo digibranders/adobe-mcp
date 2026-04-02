@@ -342,12 +342,15 @@ end run
 
 async function waitForResultFile(path: string, timeoutMs: number): Promise<ScriptEnvelope> {
   const startedAt = Date.now();
+  let delayMs = 200;
+  const maxDelayMs = 2_000;
   while (Date.now() - startedAt < timeoutMs) {
     try {
       const text = await readFile(path, "utf8");
       return parseResultEnvelope(text);
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      delayMs = Math.min(delayMs * 2, maxDelayMs);
     }
   }
 

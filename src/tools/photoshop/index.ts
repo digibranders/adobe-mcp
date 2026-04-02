@@ -193,9 +193,9 @@ export function registerPhotoshopTools(
 
   server.tool(
     "photoshop_run_script",
-    "Execute arbitrary UXP JavaScript / batchPlay code in Photoshop. The script has access to the Photoshop UXP API (app, action, core, storage modules). Return a JSON-serializable value from the script to receive it as the result. Use this for any Photoshop operation not covered by a dedicated tool.",
+    "Execute arbitrary UXP JavaScript / batchPlay code in Photoshop. The script has access to the Photoshop UXP API (app, action, core, storage modules). Return a JSON-serializable value from the script to receive it as the result. Use this for any Photoshop operation not covered by a dedicated tool. WARNING: Scripts run with full Photoshop privileges including file system and network access.",
     {
-      scriptSource: z.string().min(1).describe("UXP JavaScript code to execute inside Photoshop. Has access to: app, action, core, storage, and an optional 'input' object."),
+      scriptSource: z.string().min(1).max(1_000_000).describe("UXP JavaScript code to execute inside Photoshop. Has access to: app, action, core, storage, and an optional 'input' object. WARNING: Scripts run with full Photoshop privileges including file system and network access."),
       input: jsonObjectSchema.optional().describe("Optional JSON object passed to the script as the 'input' variable."),
       timeoutMs: timeoutSchema
     },

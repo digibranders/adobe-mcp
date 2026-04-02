@@ -79,6 +79,7 @@ interface PollWaiter {
 }
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB
+const REGISTER_COOLDOWN_MS = 5_000; // 5 seconds between /register calls
 
 function readRequestBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -169,6 +170,7 @@ export class PhotoshopPluginBridge {
   private readonly queue: PendingCommand[] = [];
   private readonly sessions = new Map<string, PluginSession>();
   private readonly waiters = new Map<string, PollWaiter>();
+  private lastRegisterAt = 0;
 
   public constructor(
     config: AppBridgeConfig,
@@ -293,7 +295,7 @@ export class PhotoshopPluginBridge {
       server.listen(this.port, "127.0.0.1", () => {
         this.logger.info("Photoshop bridge listening", {
           port: this.port,
-          token: this.token
+          tokenPrefix: this.token.slice(0, 8)
         });
         resolve(server);
       });
@@ -359,6 +361,15 @@ export class PhotoshopPluginBridge {
     if (url.pathname === "/photoshop-bridge/register" && method === "POST") {
       const body = this.parseBody(await readRequestBody(request));
       this.assertAuthorized(body);
+      const now = Date.now();
+      if (now - this.lastRegisterAt < REGISTER_COOLDOWN_MS) {
+        json(429, response, {
+          ok: false,
+          error: "Registration rate limit exceeded. Try again in a few seconds."
+        });
+        return;
+      }
+      this.lastRegisterAt = now;
       const session = this.registerSession(body);
       json(200, response, {
         ok: true,
@@ -484,14 +495,20 @@ export class PhotoshopPluginBridge {
   protected getActiveSession(): PluginSession | null {
     let active: PluginSession | null = null;
     const cutoff = Date.now() - 60_000;
-    for (const session of this.sessions.values()) {
+    const staleIds: string[] = [];
+    for (const [id, session] of this.sessions.entries()) {
       if (session.lastSeenAt < cutoff) {
+        staleIds.push(id);
         continue;
       }
 
       if (active === null || session.lastSeenAt > active.lastSeenAt) {
         active = session;
       }
+    }
+
+    for (const id of staleIds) {
+      this.sessions.delete(id);
     }
 
     return active;

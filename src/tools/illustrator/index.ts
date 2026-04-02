@@ -177,9 +177,9 @@ export function registerIllustratorTools(
 
   server.tool(
     "illustrator_run_script",
-    "Execute custom ExtendScript/JavaScript code inside Illustrator with access to the full DOM.",
+    "Execute custom ExtendScript/JavaScript code inside Illustrator with access to the full DOM. WARNING: Scripts run with full Illustrator privileges including file system access.",
     {
-      scriptSource: z.string().min(1),
+      scriptSource: z.string().min(1).max(1_000_000),
       input: jsonObjectSchema.optional(),
       timeoutMs: illustratorTimeoutSchema,
       preserveTempFiles: z.boolean().optional()

@@ -175,28 +175,32 @@ export function registerIllustratorTools(
     }
   );
 
-  server.tool(
-    "illustrator_run_script",
-    "Execute custom ExtendScript/JavaScript code inside Illustrator with access to the full DOM. WARNING: Scripts run with full Illustrator privileges including file system access.",
-    {
-      scriptSource: z.string().min(1).max(1_000_000),
-      input: jsonObjectSchema.optional(),
-      timeoutMs: illustratorTimeoutSchema,
-      preserveTempFiles: z.boolean().optional()
-    },
-    async ({ scriptSource, input, timeoutMs, preserveTempFiles }) => {
-      const execution = await bridge.execute({
-        scriptSource: createGenericUserScript(scriptSource),
-        input: input ?? {},
-        timeoutMs: timeoutMs ?? 120_000,
-        ...(preserveTempFiles === undefined ? {} : { preserveTempFiles })
-      });
+  if (config.allowScriptExecution) {
+    server.tool(
+      "illustrator_run_script",
+      "Execute custom ExtendScript/JavaScript code inside Illustrator with access to the full DOM. WARNING: Scripts run with full Illustrator privileges including file system access. NOTE: ExtendScript uses ES3 syntax only — no let, const, arrow functions, or async/await.",
+      {
+        scriptSource: z.string().min(1).max(1_000_000),
+        input: jsonObjectSchema.optional(),
+        timeoutMs: illustratorTimeoutSchema,
+        preserveTempFiles: z.boolean().optional()
+      },
+      async ({ scriptSource, input, timeoutMs, preserveTempFiles }) => {
+        const execution = await bridge.execute({
+          scriptSource: createGenericUserScript(scriptSource),
+          input: input ?? {},
+          timeoutMs: timeoutMs ?? 120_000,
+          ...(preserveTempFiles === undefined ? {} : { preserveTempFiles })
+        });
 
-      return toToolResult({
-        appId: "illustrator",
-        bridge: execution.bridge,
-        result: execution.result
-      });
-    }
-  );
+        return toToolResult({
+          appId: "illustrator",
+          bridge: execution.bridge,
+          result: execution.result
+        });
+      }
+    );
+  } else {
+    logger.info("illustrator_run_script disabled (set ADOBE_MCP_ALLOW_SCRIPT_EXECUTION=true to enable)");
+  }
 }

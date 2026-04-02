@@ -51,6 +51,7 @@ export interface ServerConfig {
   readonly logLevel: LogLevel;
   readonly tempRoot: string;
   readonly probeCacheTtlMs: number;
+  readonly allowScriptExecution: boolean;
   readonly apps: Record<AdobeAppId, AppBridgeConfig>;
 }
 

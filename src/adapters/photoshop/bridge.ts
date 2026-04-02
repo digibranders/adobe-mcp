@@ -2,10 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { randomUUID } from "node:crypto";
 
 import type { AppBridgeConfig, Logger } from "../../core/types.js";
-
-type JsonPrimitive = boolean | number | string | null;
-type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
-type JsonObject = { [key: string]: JsonValue };
+import type { JsonObject, JsonValue } from "../../core/json.js";
 
 type PhotoshopCommandName =
   | "get_status"
@@ -80,6 +77,21 @@ interface PollWaiter {
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB
 const REGISTER_COOLDOWN_MS = 5_000; // 5 seconds between /register calls
+const MIN_PLUGIN_VERSION = "0.3.0";
+const SERVER_BRIDGE_VERSION = "0.1.0";
+
+function compareSemver(a: string, b: string): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const va = pa[i] ?? 0;
+    const vb = pb[i] ?? 0;
+    if (va !== vb) {
+      return va - vb;
+    }
+  }
+  return 0;
+}
 
 function readRequestBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -100,10 +112,22 @@ function readRequestBody(request: IncomingMessage): Promise<string> {
   });
 }
 
-function json(statusCode: number, response: ServerResponse, payload: JsonObject): void {
+const ALLOWED_ORIGINS = ["http://127.0.0.1", "http://localhost"];
+
+function setCorsHeaders(response: ServerResponse, origin: string | undefined): void {
+  const allowed = origin !== undefined && ALLOWED_ORIGINS.some((o) => origin.startsWith(o))
+    ? origin
+    : ALLOWED_ORIGINS[0]!;
+  response.setHeader("access-control-allow-origin", allowed);
+  response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+  response.setHeader("access-control-allow-headers", "content-type");
+  response.setHeader("access-control-max-age", "86400");
+}
+
+function json(statusCode: number, response: ServerResponse, payload: JsonObject, origin?: string): void {
   response.statusCode = statusCode;
   response.setHeader("content-type", "application/json; charset=utf-8");
-  response.setHeader("access-control-allow-origin", "http://127.0.0.1");
+  setCorsHeaders(response, origin);
   response.end(`${JSON.stringify(payload)}\n`);
 }
 
@@ -171,6 +195,7 @@ export class PhotoshopPluginBridge {
   private readonly sessions = new Map<string, PluginSession>();
   private readonly waiters = new Map<string, PollWaiter>();
   private lastRegisterAt = 0;
+  private cleanupInterval: NodeJS.Timeout | null = null;
 
   public constructor(
     config: AppBridgeConfig,
@@ -180,10 +205,10 @@ export class PhotoshopPluginBridge {
     this.token = config.pluginToken ?? randomUUID();
   }
 
-  public getPublicConfig(): { readonly port: number; readonly token: string } {
+  public getPublicConfig(): { readonly port: number; readonly tokenPrefix: string } {
     return {
       port: this.port,
-      token: this.token
+      tokenPrefix: this.token.length > 8 ? `${this.token.slice(0, 8)}…` : "***"
     };
   }
 
@@ -201,6 +226,7 @@ export class PhotoshopPluginBridge {
       .then((server) => {
         this.server = server;
         this.lastStartError = null;
+        this.cleanupInterval = setInterval(() => this.pruneStaleSessionsAndCommands(), 30_000);
       })
       .catch((error: unknown) => {
         this.server = null;
@@ -213,6 +239,11 @@ export class PhotoshopPluginBridge {
   }
 
   public async close(): Promise<void> {
+    if (this.cleanupInterval !== null) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+
     if (this.server === null) {
       return;
     }
@@ -284,7 +315,7 @@ export class PhotoshopPluginBridge {
           json(500, response, {
             ok: false,
             error: error instanceof Error ? error.message : String(error)
-          });
+          }, request.headers.origin);
         }
       });
 
@@ -349,12 +380,20 @@ export class PhotoshopPluginBridge {
   private async handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const method = request.method ?? "GET";
     const url = new URL(request.url ?? "/", `http://127.0.0.1:${this.port}`);
+    const origin = request.headers.origin;
+
+    if (method === "OPTIONS") {
+      setCorsHeaders(response, request.headers.origin);
+      response.statusCode = 204;
+      response.end();
+      return;
+    }
 
     if (url.pathname === "/photoshop-bridge/health" && method === "GET") {
       json(200, response, {
         ok: true,
         status: this.getStatusPayload()
-      });
+      }, origin);
       return;
     }
 
@@ -366,16 +405,25 @@ export class PhotoshopPluginBridge {
         json(429, response, {
           ok: false,
           error: "Registration rate limit exceeded. Try again in a few seconds."
-        });
+        }, origin);
         return;
       }
       this.lastRegisterAt = now;
+      const pluginVersion = asString(body.pluginVersion, "0.0.0");
+      if (compareSemver(pluginVersion, MIN_PLUGIN_VERSION) < 0) {
+        this.logger.warn("Photoshop plugin version is outdated", {
+          pluginVersion,
+          minRequired: MIN_PLUGIN_VERSION
+        });
+      }
       const session = this.registerSession(body);
       json(200, response, {
         ok: true,
         sessionId: session.sessionId,
-        pollTimeoutMs: 25_000
-      });
+        pollTimeoutMs: 25_000,
+        serverBridgeVersion: SERVER_BRIDGE_VERSION,
+        minPluginVersion: MIN_PLUGIN_VERSION
+      }, origin);
       return;
     }
 
@@ -389,7 +437,7 @@ export class PhotoshopPluginBridge {
         ok: true,
         sessionId: session.sessionId,
         command: commandToJson(command)
-      });
+      }, origin);
       return;
     }
 
@@ -419,14 +467,14 @@ export class PhotoshopPluginBridge {
               }
             }
       );
-      json(200, response, { ok: true });
+      json(200, response, { ok: true }, origin);
       return;
     }
 
     json(404, response, {
       ok: false,
       error: "Not found"
-    });
+    }, origin);
   }
 
   private parseBody(body: string): JsonObject {
@@ -512,6 +560,32 @@ export class PhotoshopPluginBridge {
     }
 
     return active;
+  }
+
+  private pruneStaleSessionsAndCommands(): void {
+    const cutoff = Date.now() - 60_000;
+    const staleIds = new Set<string>();
+    for (const [id, session] of this.sessions.entries()) {
+      if (session.lastSeenAt < cutoff) {
+        staleIds.add(id);
+      }
+    }
+
+    for (const id of staleIds) {
+      this.sessions.delete(id);
+      this.logger.debug("Pruned stale Photoshop plugin session", { sessionId: id });
+    }
+
+    if (staleIds.size > 0) {
+      for (let i = this.queue.length - 1; i >= 0; i--) {
+        const pending = this.queue[i]!;
+        if (pending.leasedSessionId !== null && staleIds.has(pending.leasedSessionId)) {
+          this.queue.splice(i, 1);
+          clearTimeout(pending.timer);
+          pending.reject(new Error("Photoshop plugin session expired; command discarded."));
+        }
+      }
+    }
   }
 
   protected async nextCommand(sessionId: string): Promise<BridgeCommand | null> {

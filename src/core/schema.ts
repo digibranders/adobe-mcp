@@ -57,5 +57,6 @@ export const serverConfigSchema = z.object({
   logLevel: logLevelSchema,
   tempRoot: z.string(),
   probeCacheTtlMs: z.number().int().positive(),
+  allowScriptExecution: z.boolean(),
   apps: z.record(adobeAppIdSchema, appBridgeConfigSchema)
 });

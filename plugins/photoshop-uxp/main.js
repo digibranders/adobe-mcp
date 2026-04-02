@@ -122,6 +122,21 @@ async function postJson(url, payload) {
   return await response.json();
 }
 
+function requireNumber(value, name) {
+  const num = Number(value);
+  if (Number.isNaN(num)) {
+    throw new Error(`Invalid numeric value for '${name}': ${String(value)}`);
+  }
+  return num;
+}
+
+function requireString(value, name) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`'${name}' is required and must be a non-empty string.`);
+  }
+  return value;
+}
+
 function fileUrlFromPath(path) {
   if (path.startsWith("file:")) {
     return path;
@@ -214,9 +229,9 @@ async function executeCommand(commandEnvelope) {
     case "create_document":
       return await core.executeAsModal(async () => {
         const document = await app.createDocument({
-          width: Number(payload.width),
-          height: Number(payload.height),
-          resolution: payload.resolution ? Number(payload.resolution) : 72,
+          width: requireNumber(payload.width, "width"),
+          height: requireNumber(payload.height, "height"),
+          resolution: payload.resolution ? requireNumber(payload.resolution, "resolution") : 72,
           ...(typeof payload.name === "string" ? { name: payload.name } : {})
         });
         return {
@@ -340,10 +355,18 @@ async function executeCommand(commandEnvelope) {
         };
       }, { commandName: "Add Photoshop Text Layer" });
 
-    case "run_script":
+    case "run_script": {
+      const source = String(payload.scriptSource || "");
+      const MAX_SCRIPT_LENGTH = 1_000_000;
+      if (source.length === 0) {
+        throw new Error("scriptSource is required and must not be empty.");
+      }
+      if (source.length > MAX_SCRIPT_LENGTH) {
+        throw new Error(`Script source exceeds maximum length (${MAX_SCRIPT_LENGTH} characters).`);
+      }
       return await core.executeAsModal(async () => {
         const scriptInput = payload.input || {};
-        const scriptFn = new Function("app", "action", "core", "storage", "input", payload.scriptSource);
+        const scriptFn = new Function("app", "action", "core", "storage", "input", source);
         const result = await scriptFn(app, action, core, storage, scriptInput);
         if (result === undefined || result === null) {
           return { result: null };
@@ -355,6 +378,7 @@ async function executeCommand(commandEnvelope) {
           return { result: String(result) };
         }
       }, { commandName: "Run MCP Script" });
+    }
 
     case "resize_image":
       if (!app.activeDocument) {
@@ -367,10 +391,10 @@ async function executeCommand(commandEnvelope) {
           constrainProportions: false
         };
         if (payload.width !== undefined) {
-          resizeDesc.width = { _unit: "pixelsUnit", _value: Number(payload.width) };
+          resizeDesc.width = { _unit: "pixelsUnit", _value: requireNumber(payload.width, "width") };
         }
         if (payload.height !== undefined) {
-          resizeDesc.height = { _unit: "pixelsUnit", _value: Number(payload.height) };
+          resizeDesc.height = { _unit: "pixelsUnit", _value: requireNumber(payload.height, "height") };
         }
         if (payload.resampleMethod) {
           resizeDesc.interfaceIconFrameDimmed = { _enum: "interpolationType", _value: String(payload.resampleMethod) };
@@ -389,10 +413,10 @@ async function executeCommand(commandEnvelope) {
           _obj: "crop",
           to: {
             _obj: "rectangle",
-            top: { _unit: "pixelsUnit", _value: Number(payload.top) },
-            left: { _unit: "pixelsUnit", _value: Number(payload.left) },
-            bottom: { _unit: "pixelsUnit", _value: Number(payload.bottom) },
-            right: { _unit: "pixelsUnit", _value: Number(payload.right) }
+            top: { _unit: "pixelsUnit", _value: requireNumber(payload.top, "top") },
+            left: { _unit: "pixelsUnit", _value: requireNumber(payload.left, "left") },
+            bottom: { _unit: "pixelsUnit", _value: requireNumber(payload.bottom, "bottom") },
+            right: { _unit: "pixelsUnit", _value: requireNumber(payload.right, "right") }
           }
         }], {});
         return { document: summarizeDocument(doc) };

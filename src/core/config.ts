@@ -83,6 +83,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     logLevel: readLogLevel(env.ADOBE_MCP_LOG_LEVEL),
     tempRoot: env.ADOBE_MCP_TEMP_ROOT ?? join(tmpdir(), ".adobe-desktop-mcp"),
     probeCacheTtlMs: readPositiveInteger(env.ADOBE_MCP_PROBE_CACHE_TTL_MS, 15_000),
+    allowScriptExecution: readBoolean(env.ADOBE_MCP_ALLOW_SCRIPT_EXECUTION, false),
     apps
   };
 

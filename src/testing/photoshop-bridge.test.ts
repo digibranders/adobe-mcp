@@ -98,7 +98,7 @@ describe("PhotoshopPluginBridge", () => {
     const config = bridge.getPublicConfig();
 
     expect(config.port).toBe(48124);
-    expect(config.token).toBe("test-token");
+    expect(config.tokenPrefix).toBe("test-tok…");
   });
 
   it("allows startup to be retried after a transient listen failure", async () => {

@@ -5,10 +5,9 @@ import { basename, extname, join } from "node:path";
 import { runProcess } from "../../core/process.js";
 import { createSessionTempDirectory, removePath, writeJsonFile } from "../../core/tempfiles.js";
 import type { AppBridgeConfig, Logger } from "../../core/types.js";
+import type { JsonObject } from "../../core/json.js";
 
-export type JsonPrimitive = boolean | number | string | null;
-export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
-export type JsonObject = { [key: string]: JsonValue };
+export type { JsonObject, JsonPrimitive, JsonValue } from "../../core/json.js";
 
 export interface IllustratorExecutionRequest {
   readonly scriptSource: string;

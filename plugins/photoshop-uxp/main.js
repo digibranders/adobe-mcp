@@ -16,7 +16,7 @@ let bridgeLoopState = {
 function defaultConfig() {
   return {
     bridgeUrl: "http://127.0.0.1:47123/photoshop-bridge",
-    bridgeToken: "adobe-mcp-dev-token"
+    bridgeToken: ""
   };
 }
 
@@ -584,7 +584,7 @@ async function executeCommand(commandEnvelope) {
               color: {
                 _obj: "RGBColor",
                 red: Number(fill.red),
-                grain: Number(fill.green),
+                green: Number(fill.green),
                 blue: Number(fill.blue)
               }
             },
@@ -600,7 +600,7 @@ async function executeCommand(commandEnvelope) {
               color: {
                 _obj: "RGBColor",
                 red: Number(payload.strokeColor.red),
-                grain: Number(payload.strokeColor.green),
+                green: Number(payload.strokeColor.green),
                 blue: Number(payload.strokeColor.blue)
               }
             },
@@ -876,13 +876,13 @@ async function executeCommand(commandEnvelope) {
           minimum: {
             _obj: "RGBColor",
             red: Number(color.red),
-            grain: Number(color.green),
+            green: Number(color.green),
             blue: Number(color.blue)
           },
           maximum: {
             _obj: "RGBColor",
             red: Number(color.red),
-            grain: Number(color.green),
+            green: Number(color.green),
             blue: Number(color.blue)
           }
         }], {});
@@ -954,7 +954,7 @@ async function executeCommand(commandEnvelope) {
             color: {
               _obj: "RGBColor",
               red: Number(color.red),
-              grain: Number(color.green),
+              green: Number(color.green),
               blue: Number(color.blue)
             }
           },

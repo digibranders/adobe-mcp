@@ -215,15 +215,18 @@ export function registerPhotoshopTools(
 
   server.tool(
     "photoshop_resize_image",
-    "Resize the active Photoshop document to new dimensions.",
+    "Resize the active Photoshop document to new dimensions. At least one of width or height is required.",
     {
       width: z.number().positive().optional().describe("New width in pixels."),
       height: z.number().positive().optional().describe("New height in pixels."),
       resampleMethod: z.enum(["nearestNeighbor", "bilinear", "bicubic", "bicubicSmoother", "bicubicSharper", "automaticInterpolation"]).optional(),
       timeoutMs: timeoutSchema
     },
-    async ({ width, height, resampleMethod, timeoutMs }) =>
-      toToolResult({
+    async ({ width, height, resampleMethod, timeoutMs }) => {
+      if (width === undefined && height === undefined) {
+        return toToolResult({ error: "At least one of width or height is required." });
+      }
+      return toToolResult({
         appId: "photoshop",
         result: await bridge.runCommand(
           "resize_image",
@@ -234,7 +237,8 @@ export function registerPhotoshopTools(
           },
           timeoutMs ?? 60_000
         )
-      })
+      });
+    }
   );
 
   server.tool(

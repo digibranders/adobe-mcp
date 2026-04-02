@@ -124,7 +124,7 @@ describe("PhotoshopPluginBridge", () => {
     expect(bridge.getStatusPayload().lastStartError).toBeNull();
   });
 
-  it("releases a leased command when a new session registers", async () => {
+  it("rejects pending commands when a new session registers", async () => {
     const bridge = new TestPhotoshopPluginBridge(
       {
         enabled: true,
@@ -145,13 +145,10 @@ describe("PhotoshopPluginBridge", () => {
     const leasedToFirstSession = await bridge.nextCommandForTests(firstSessionId);
     expect(leasedToFirstSession?.command).toBe("list_documents");
 
-    const secondSessionId = bridge.registerSessionForTests("session-two");
-    const leasedToSecondSession = await bridge.nextCommandForTests(secondSessionId);
-    expect(leasedToSecondSession?.requestId).toBe(leasedToFirstSession?.requestId);
+    bridge.registerSessionForTests("session-two");
 
-    bridge.resolveCommandForTests(leasedToSecondSession?.requestId ?? "", secondSessionId);
-    await expect(pendingResult).resolves.toEqual({
-      ok: true
-    });
+    await expect(pendingResult).rejects.toThrow(
+      "Photoshop plugin session re-registered; pending command discarded."
+    );
   });
 });

@@ -102,7 +102,7 @@ function readRequestBody(request: IncomingMessage): Promise<string> {
 function json(statusCode: number, response: ServerResponse, payload: JsonObject): void {
   response.statusCode = statusCode;
   response.setHeader("content-type", "application/json; charset=utf-8");
-  response.setHeader("access-control-allow-origin", "*");
+  response.setHeader("access-control-allow-origin", "http://127.0.0.1");
   response.end(`${JSON.stringify(payload)}\n`);
 }
 
@@ -175,7 +175,7 @@ export class PhotoshopPluginBridge {
     private readonly logger: Logger
   ) {
     this.port = config.pluginPort ?? 47_123;
-    this.token = config.pluginToken ?? "adobe-mcp-dev-token";
+    this.token = config.pluginToken ?? randomUUID();
   }
 
   public getPublicConfig(): { readonly port: number; readonly token: string } {
@@ -292,7 +292,8 @@ export class PhotoshopPluginBridge {
 
       server.listen(this.port, "127.0.0.1", () => {
         this.logger.info("Photoshop bridge listening", {
-          port: this.port
+          port: this.port,
+          token: this.token
         });
         resolve(server);
       });
@@ -309,6 +310,13 @@ export class PhotoshopPluginBridge {
     if (this.getActiveSession() === null) {
       throw new Error(
         "Photoshop plugin is not connected. Load plugins/photoshop-uxp in UXP Developer Tool and start the bridge from the panel."
+      );
+    }
+
+    const MAX_QUEUE_SIZE = 50;
+    if (this.queue.length >= MAX_QUEUE_SIZE) {
+      throw new Error(
+        `Photoshop bridge command queue is full (${MAX_QUEUE_SIZE}). Is the plugin responding to commands?`
       );
     }
 
@@ -436,8 +444,12 @@ export class PhotoshopPluginBridge {
     }
     this.waiters.clear();
     this.sessions.clear();
-    for (const pending of this.queue) {
-      pending.leasedSessionId = null;
+
+    for (const pending of this.queue.splice(0, this.queue.length)) {
+      clearTimeout(pending.timer);
+      pending.reject(
+        new Error("Photoshop plugin session re-registered; pending command discarded.")
+      );
     }
 
     const sessionId = randomUUID();

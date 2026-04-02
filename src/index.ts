@@ -17,6 +17,19 @@ async function main(): Promise<void> {
   const server = createMcpServer(config, registry, logger);
   const transport = new StdioServerTransport();
 
+  const shutdown = async (): Promise<void> => {
+    logger.info("Shutting down adobe-desktop-mcp");
+    try {
+      await server.close();
+    } catch {
+      // best-effort
+    }
+    process.exit(0);
+  };
+
+  process.on("SIGTERM", () => void shutdown());
+  process.on("SIGINT", () => void shutdown());
+
   logger.info("Starting adobe-desktop-mcp", {
     version: config.serverVersion
   });

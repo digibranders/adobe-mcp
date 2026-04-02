@@ -10,7 +10,8 @@ let bridgeLoopState = {
   running: false,
   sessionId: null,
   timeoutHandle: null,
-  backoffMs: 2000
+  backoffMs: 2000,
+  allowScriptExecution: false
 };
 
 function defaultConfig() {
@@ -356,6 +357,11 @@ async function executeCommand(commandEnvelope) {
       }, { commandName: "Add Photoshop Text Layer" });
 
     case "run_script": {
+      // Defense-in-depth: enforce server-side script execution policy at the plugin level.
+      // This prevents direct HTTP-to-bridge bypass of the MCP server's allowScriptExecution gate.
+      if (!bridgeLoopState.allowScriptExecution) {
+        throw new Error("Script execution is disabled by the MCP server (ADOBE_MCP_ALLOW_SCRIPT_EXECUTION=false). Enable it on the server to use run_script.");
+      }
       const source = String(payload.scriptSource || "");
       const MAX_SCRIPT_LENGTH = 1_000_000;
       if (source.length === 0) {
@@ -1056,6 +1062,9 @@ async function registerWithBridge(config) {
       "copy_layer_to_document"
     ]
   });
+
+  // Store server-side script execution policy for defense-in-depth enforcement.
+  bridgeLoopState.allowScriptExecution = response.allowScriptExecution === true;
 
   return response.sessionId;
 }

@@ -1,3 +1,4 @@
+import { platform } from "node:os";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
@@ -15,6 +16,12 @@ import {
 } from "../../adapters/illustrator/bridge.js";
 
 const illustratorTimeoutSchema = z.number().int().positive().max(300_000).optional();
+
+function assertMacOS(): void {
+  if (platform() !== "darwin") {
+    throw new Error("Illustrator automation requires macOS in this version of adobe-desktop-mcp. Windows support is planned.");
+  }
+}
 
 function createBridge(config: ServerConfig, logger: Logger): IllustratorBridge {
   return new IllustratorBridge(config.apps.illustrator, config.tempRoot, logger);
@@ -58,6 +65,7 @@ export function registerIllustratorTools(
       preserveTempFiles: z.boolean().optional()
     },
     async (args) => {
+      assertMacOS();
       const execution = await bridge.execute({
         scriptSource: createCreateDocumentScript(),
         input: {
@@ -90,6 +98,7 @@ export function registerIllustratorTools(
       preserveTempFiles: z.boolean().optional()
     },
     async ({ documentPath, timeoutMs, preserveTempFiles }) => {
+      assertMacOS();
       const execution = await bridge.execute({
         scriptSource: createOpenDocumentScript(),
         input: {
@@ -116,6 +125,7 @@ export function registerIllustratorTools(
       preserveTempFiles: z.boolean().optional()
     },
     async ({ documentPath, timeoutMs, preserveTempFiles }) => {
+      assertMacOS();
       const execution = await bridge.execute({
         scriptSource: createInspectDocumentScript(),
         input: documentPath === undefined ? {} : { documentPath },
@@ -148,6 +158,7 @@ export function registerIllustratorTools(
       preserveTempFiles: z.boolean().optional()
     },
     async (args) => {
+      assertMacOS();
       const execution = await bridge.execute({
         scriptSource: createExportDocumentScript(),
         input: {
@@ -186,6 +197,7 @@ export function registerIllustratorTools(
         preserveTempFiles: z.boolean().optional()
       },
       async ({ scriptSource, input, timeoutMs, preserveTempFiles }) => {
+        assertMacOS();
         const execution = await bridge.execute({
           scriptSource: createGenericUserScript(scriptSource),
           input: input ?? {},

@@ -10,17 +10,31 @@ import { registerInDesignTools } from "../tools/indesign/index.js";
 import { registerAcrobatTools } from "../tools/acrobat/index.js";
 import { registerAfterEffectsTools } from "../tools/aftereffects/index.js";
 import { registerPremiereTools } from "../tools/premiere/index.js";
+import { PhotoshopPluginBridge } from "../adapters/photoshop/bridge.js";
 import { toToolResult } from "./toolResult.js";
+
+export interface McpServerHandle {
+  readonly server: McpServer;
+  /** Shut down all bridge connections. Must be called before server.close(). */
+  readonly cleanup: () => Promise<void>;
+}
 
 export function createMcpServer(
   config: ServerConfig,
   registry: AdapterRegistry,
   logger: Logger
-): McpServer {
+): McpServerHandle {
   const server = new McpServer({
     name: config.serverName,
     version: config.serverVersion
   });
+
+  // Create bridge instances here for proper lifecycle management.
+  const photoshopBridge = new PhotoshopPluginBridge(
+    config.apps.photoshop,
+    logger,
+    config.allowScriptExecution
+  );
 
   server.tool("adobe_desktop_health", "Get MCP server health info including name, version, and configuration.", {}, async (_args) => {
     return toToolResult({
@@ -60,11 +74,15 @@ export function createMcpServer(
   });
 
   registerIllustratorTools(server, registry, config, logger);
-  registerPhotoshopTools(server, registry, config, logger);
+  registerPhotoshopTools(server, registry, config, logger, photoshopBridge);
   registerInDesignTools(server, registry);
   registerAcrobatTools(server, registry);
   registerAfterEffectsTools(server, registry);
   registerPremiereTools(server, registry);
 
-  return server;
+  const cleanup = async (): Promise<void> => {
+    await photoshopBridge.close();
+  };
+
+  return { server, cleanup };
 }

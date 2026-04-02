@@ -9,10 +9,6 @@ import { jsonObjectSchema } from "../../core/json.js";
 
 const timeoutSchema = z.number().int().positive().max(300_000).optional();
 
-function createBridge(config: ServerConfig, logger: Logger): PhotoshopPluginBridge {
-  return new PhotoshopPluginBridge(config.apps.photoshop, logger);
-}
-
 async function getBridgeStatusPayload(bridge: PhotoshopPluginBridge) {
   try {
     await bridge.ensureStarted();
@@ -31,9 +27,9 @@ export function registerPhotoshopTools(
   server: McpServer,
   registry: AdapterRegistry,
   config: ServerConfig,
-  logger: Logger
+  logger: Logger,
+  bridge: PhotoshopPluginBridge
 ): void {
-  const bridge = createBridge(config, logger);
 
   server.tool(
     "photoshop_get_status",
@@ -141,7 +137,7 @@ export function registerPhotoshopTools(
 
   server.tool(
     "photoshop_export_active_document",
-    "Export the active Photoshop document to PNG, JPG, or PSD format.",
+    "Export the active Photoshop document to PNG, JPG, or PSD format. Requires Photoshop 25.0+.",
     {
       outputPath: z.string().min(1),
       format: z.enum(["png", "jpg", "psd"]),
@@ -473,7 +469,7 @@ export function registerPhotoshopTools(
 
   server.tool(
     "photoshop_canvas_snapshot",
-    "Capture a snapshot of the active Photoshop canvas as a PNG file on disk. Use this to visually inspect the current state of the document. Returns the file path to the snapshot image.",
+    "Capture a snapshot of the active Photoshop canvas as a PNG file on disk. Requires Photoshop 25.0+ with UXP plugin. Returns the file path to the snapshot image.",
     {
       outputPath: z.string().min(1).optional().describe("Where to save the snapshot PNG. Defaults to a temp file."),
       maxDimension: z.number().positive().optional().describe("Max width/height in pixels for the snapshot (scales down large documents). Default: 1024."),

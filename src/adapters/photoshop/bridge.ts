@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import type { AppBridgeConfig, Logger } from "../../core/types.js";
 import type { JsonObject, JsonValue } from "../../core/json.js";
@@ -68,6 +69,7 @@ interface PluginSession {
   readonly photoshopVersion: string | null;
   readonly capabilities: readonly string[];
   lastSeenAt: number;
+  lastPollAt: number;
 }
 
 interface PollWaiter {
@@ -79,13 +81,64 @@ const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10 MB
 const REGISTER_COOLDOWN_MS = 5_000; // 5 seconds between /register calls
 const MIN_PLUGIN_VERSION = "0.3.0";
 const SERVER_BRIDGE_VERSION = "0.1.0";
+const MAX_WAITER_COUNT = 10;
+const MIN_POLL_INTERVAL_MS = 500;
+
+/** Typed HTTP error with status code for proper HTTP response mapping. */
+class BridgeHttpError extends Error {
+  public constructor(
+    message: string,
+    public readonly statusCode: number
+  ) {
+    super(message);
+    this.name = "BridgeHttpError";
+  }
+}
+
+class AuthorizationError extends BridgeHttpError {
+  public constructor() {
+    super("Unauthorized", 401);
+    this.name = "AuthorizationError";
+  }
+}
+
+class SessionNotFoundError extends BridgeHttpError {
+  public constructor() {
+    super("Unknown session", 404);
+    this.name = "SessionNotFoundError";
+  }
+}
+
+class BadRequestError extends BridgeHttpError {
+  public constructor(message: string) {
+    super(message, 400);
+    this.name = "BadRequestError";
+  }
+}
+
+/** Strip pre-release and build metadata before comparing semver core. */
+function stripSemverSuffix(version: string): string {
+  const dashIndex = version.indexOf("-");
+  const plusIndex = version.indexOf("+");
+  let end = version.length;
+  if (dashIndex !== -1) {
+    end = Math.min(end, dashIndex);
+  }
+  if (plusIndex !== -1) {
+    end = Math.min(end, plusIndex);
+  }
+  return version.slice(0, end);
+}
 
 function compareSemver(a: string, b: string): number {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
+  const pa = stripSemverSuffix(a).split(".").map((s) => Number.parseInt(s, 10));
+  const pb = stripSemverSuffix(b).split(".").map((s) => Number.parseInt(s, 10));
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
     const va = pa[i] ?? 0;
     const vb = pb[i] ?? 0;
+    if (Number.isNaN(va) || Number.isNaN(vb)) {
+      continue;
+    }
     if (va !== vb) {
       return va - vb;
     }
@@ -112,12 +165,26 @@ function readRequestBody(request: IncomingMessage): Promise<string> {
   });
 }
 
-const ALLOWED_ORIGINS = ["http://127.0.0.1", "http://localhost"];
+const ALLOWED_HOSTNAMES = new Set(["127.0.0.1", "localhost"]);
+const DEFAULT_CORS_ORIGIN = "http://127.0.0.1";
+
+/**
+ * Validates an origin using exact hostname matching.
+ * Rejects spoofed origins like "http://127.0.0.1.evil.com".
+ */
+function isAllowedOrigin(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    return parsed.protocol === "http:" && ALLOWED_HOSTNAMES.has(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
 
 function setCorsHeaders(response: ServerResponse, origin: string | undefined): void {
-  const allowed = origin !== undefined && ALLOWED_ORIGINS.some((o) => origin.startsWith(o))
+  const allowed = origin !== undefined && isAllowedOrigin(origin)
     ? origin
-    : ALLOWED_ORIGINS[0]!;
+    : DEFAULT_CORS_ORIGIN;
   response.setHeader("access-control-allow-origin", allowed);
   response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
   response.setHeader("access-control-allow-headers", "content-type");
@@ -199,7 +266,8 @@ export class PhotoshopPluginBridge {
 
   public constructor(
     config: AppBridgeConfig,
-    private readonly logger: Logger
+    private readonly logger: Logger,
+    private readonly allowScriptExecution: boolean = false
   ) {
     this.port = config.pluginPort ?? 47_123;
     this.token = config.pluginToken ?? randomUUID();
@@ -309,12 +377,24 @@ export class PhotoshopPluginBridge {
         try {
           await this.handleRequest(request, response);
         } catch (error) {
-          this.logger.error("Photoshop bridge request failed", {
-            error: error instanceof Error ? error.message : String(error)
-          });
-          json(500, response, {
+          const statusCode = error instanceof BridgeHttpError ? error.statusCode : 500;
+          // Only log non-auth errors at error level; auth failures are expected traffic.
+          if (error instanceof AuthorizationError) {
+            this.logger.debug("Photoshop bridge auth rejected", {});
+          } else {
+            this.logger.error("Photoshop bridge request failed", {
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+          // Sanitize: never leak internal details for auth errors.
+          const message = error instanceof AuthorizationError
+            ? "Unauthorized"
+            : error instanceof Error
+              ? error.message
+              : String(error);
+          json(statusCode, response, {
             ok: false,
-            error: error instanceof Error ? error.message : String(error)
+            error: message
           }, request.headers.origin);
         }
       });
@@ -355,6 +435,23 @@ export class PhotoshopPluginBridge {
 
     return await new Promise<JsonObject>((resolve, reject) => {
       const requestId = randomUUID();
+
+      // Audit log: track all bridge commands for security traceability.
+      if (command === "run_script") {
+        const scriptHash = typeof payload.scriptSource === "string"
+          ? createHash("sha256").update(payload.scriptSource).digest("hex").slice(0, 16)
+          : "n/a";
+        this.logger.warn("Photoshop bridge: run_script command queued", {
+          requestId,
+          scriptHash
+        });
+      } else {
+        this.logger.info("Photoshop bridge command queued", {
+          requestId,
+          command
+        });
+      }
+
       const timer = setTimeout(() => {
         this.removePendingCommand(requestId);
         reject(new Error(`Photoshop command timed out: ${command}`));
@@ -389,10 +486,13 @@ export class PhotoshopPluginBridge {
       return;
     }
 
+    // Unauthenticated health endpoint returns only minimal info.
     if (url.pathname === "/photoshop-bridge/health" && method === "GET") {
+      const activeSession = this.getActiveSession();
       json(200, response, {
         ok: true,
-        status: this.getStatusPayload()
+        connected: activeSession !== null,
+        bridgeVersion: SERVER_BRIDGE_VERSION
       }, origin);
       return;
     }
@@ -415,6 +515,11 @@ export class PhotoshopPluginBridge {
           pluginVersion,
           minRequired: MIN_PLUGIN_VERSION
         });
+        json(400, response, {
+          ok: false,
+          error: `Plugin version ${pluginVersion} is below the minimum required ${MIN_PLUGIN_VERSION}. Please update the plugin.`
+        }, origin);
+        return;
       }
       const session = this.registerSession(body);
       json(200, response, {
@@ -422,7 +527,8 @@ export class PhotoshopPluginBridge {
         sessionId: session.sessionId,
         pollTimeoutMs: 25_000,
         serverBridgeVersion: SERVER_BRIDGE_VERSION,
-        minPluginVersion: MIN_PLUGIN_VERSION
+        minPluginVersion: MIN_PLUGIN_VERSION,
+        allowScriptExecution: this.allowScriptExecution
       }, origin);
       return;
     }
@@ -432,6 +538,16 @@ export class PhotoshopPluginBridge {
       this.assertAuthorized(body);
       const sessionId = asString(body.sessionId, "");
       const session = this.touchSession(sessionId);
+      // Rate limit polling to prevent abuse from local processes.
+      const now = Date.now();
+      if (now - session.lastPollAt < MIN_POLL_INTERVAL_MS) {
+        json(429, response, {
+          ok: false,
+          error: "Poll rate limit exceeded."
+        }, origin);
+        return;
+      }
+      session.lastPollAt = now;
       const command = await this.nextCommand(session.sessionId);
       json(200, response, {
         ok: true,
@@ -482,17 +598,33 @@ export class PhotoshopPluginBridge {
       return {};
     }
 
-    const parsed = JSON.parse(body) as unknown;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      throw new BadRequestError("Invalid JSON in request body.");
+    }
     if (!isJsonObject(parsed)) {
-      throw new Error("Expected JSON object body.");
+      throw new BadRequestError("Expected JSON object body.");
     }
 
     return parsed;
   }
 
   private assertAuthorized(body: JsonObject): void {
-    if (asString(body.token, "") !== this.token) {
-      throw new Error("Unauthorized Photoshop bridge request.");
+    const provided = asString(body.token, "");
+    const expected = this.token;
+    // Use timing-safe comparison to prevent token extraction via timing side-channel.
+    // If lengths differ, compare against a dummy buffer to avoid leaking length info.
+    const providedBuf = Buffer.from(provided, "utf8");
+    const expectedBuf = Buffer.from(expected, "utf8");
+    if (providedBuf.length !== expectedBuf.length) {
+      const dummy = Buffer.alloc(expectedBuf.length);
+      timingSafeEqual(dummy, expectedBuf);
+      throw new AuthorizationError();
+    }
+    if (!timingSafeEqual(providedBuf, expectedBuf)) {
+      throw new AuthorizationError();
     }
   }
 
@@ -519,7 +651,8 @@ export class PhotoshopPluginBridge {
       photoshopVersion:
         typeof body.photoshopVersion === "string" ? body.photoshopVersion : null,
       capabilities: asStringArray(body.capabilities),
-      lastSeenAt: Date.now()
+      lastSeenAt: Date.now(),
+      lastPollAt: 0
     };
 
     this.sessions.set(sessionId, session);
@@ -533,7 +666,7 @@ export class PhotoshopPluginBridge {
   protected touchSession(sessionId: string): PluginSession {
     const session = this.sessions.get(sessionId);
     if (session === undefined) {
-      throw new Error("Unknown Photoshop plugin session.");
+      throw new SessionNotFoundError();
     }
 
     session.lastSeenAt = Date.now();
@@ -588,6 +721,7 @@ export class PhotoshopPluginBridge {
     }
   }
 
+  // Node.js is single-threaded: the synchronous lease assignment is atomic within a tick.
   protected async nextCommand(sessionId: string): Promise<BridgeCommand | null> {
     const pending = this.queue[0];
     if (pending !== undefined) {
@@ -601,6 +735,19 @@ export class PhotoshopPluginBridge {
       }
 
       return null;
+    }
+
+    // Safety net: cap waiter count to prevent unbounded accumulation.
+    if (this.waiters.size >= MAX_WAITER_COUNT) {
+      const oldestKey = this.waiters.keys().next().value;
+      if (oldestKey !== undefined) {
+        const oldest = this.waiters.get(oldestKey);
+        if (oldest !== undefined) {
+          clearTimeout(oldest.timer);
+          oldest.resolve(null);
+        }
+        this.waiters.delete(oldestKey);
+      }
     }
 
     return await new Promise<BridgeCommand | null>((resolve) => {
@@ -680,3 +827,6 @@ export class PhotoshopPluginBridge {
     }
   }
 }
+
+/** @internal Exported for testing only. */
+export { isAllowedOrigin as _isAllowedOrigin, compareSemver as _compareSemver };

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { request } from "node:http";
 
 import { StderrLogger } from "../core/logger.js";
-import { PhotoshopPluginBridge } from "../adapters/photoshop/bridge.js";
+import { PhotoshopPluginBridge, _isAllowedOrigin, _compareSemver } from "../adapters/photoshop/bridge.js";
 
 const TOKEN = "test-integration-token";
 const bridges: PhotoshopPluginBridge[] = [];
@@ -109,7 +109,7 @@ afterEach(async () => {
 });
 
 describe("Photoshop HTTP Bridge Integration", () => {
-  it("health endpoint returns ok without authentication", async () => {
+  it("health endpoint returns minimal info without authentication", async () => {
     const { bridge, port } = createBridge();
     await bridge.ensureStarted();
 
@@ -117,9 +117,13 @@ describe("Photoshop HTTP Bridge Integration", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body.ok).toBe(true);
+    expect(res.body.connected).toBe(false);
+    expect(res.body.bridgeVersion).toBe("0.1.0");
+    // Should NOT expose sensitive fields
+    expect(res.body.status).toBeUndefined();
   });
 
-  it("rejects register request with invalid token", async () => {
+  it("rejects register request with invalid token with 401", async () => {
     const { bridge, port } = createBridge();
     await bridge.ensureStarted();
 
@@ -128,11 +132,11 @@ describe("Photoshop HTTP Bridge Integration", () => {
       pluginName: "test"
     });
 
-    expect(res.statusCode).toBe(500);
+    expect(res.statusCode).toBe(401);
     expect(res.body.ok).toBe(false);
   });
 
-  it("rejects poll request with invalid token", async () => {
+  it("rejects poll request with invalid token with 401", async () => {
     const { bridge, port } = createBridge();
     await bridge.ensureStarted();
 
@@ -141,11 +145,11 @@ describe("Photoshop HTTP Bridge Integration", () => {
       sessionId: "fake"
     });
 
-    expect(res.statusCode).toBe(500);
+    expect(res.statusCode).toBe(401);
     expect(res.body.ok).toBe(false);
   });
 
-  it("rejects result request with invalid token", async () => {
+  it("rejects result request with invalid token with 401", async () => {
     const { bridge, port } = createBridge();
     await bridge.ensureStarted();
 
@@ -157,7 +161,7 @@ describe("Photoshop HTTP Bridge Integration", () => {
       result: {}
     });
 
-    expect(res.statusCode).toBe(500);
+    expect(res.statusCode).toBe(401);
     expect(res.body.ok).toBe(false);
   });
 
@@ -206,7 +210,7 @@ describe("Photoshop HTTP Bridge Integration", () => {
     expect(commandResult).toEqual({ documents: [] });
   });
 
-  it("rejects poll with unknown session id", async () => {
+  it("rejects poll with unknown session id with 404", async () => {
     const { bridge, port } = createBridge();
     await bridge.ensureStarted();
 
@@ -215,7 +219,7 @@ describe("Photoshop HTTP Bridge Integration", () => {
       sessionId: "nonexistent-session"
     });
 
-    expect(res.statusCode).toBe(500);
+    expect(res.statusCode).toBe(404);
     expect(res.body.ok).toBe(false);
   });
 
@@ -227,5 +231,138 @@ describe("Photoshop HTTP Bridge Integration", () => {
 
     expect(res.statusCode).toBe(404);
     expect(res.body.ok).toBe(false);
+  });
+
+  it("rejects outdated plugin version with 400", async () => {
+    const { bridge, port } = createBridge();
+    await bridge.ensureStarted();
+
+    const res = await httpPost(port, "/photoshop-bridge/register", {
+      token: TOKEN,
+      pluginName: "test",
+      pluginVersion: "0.1.0",
+      photoshopVersion: "25.0.0",
+      capabilities: []
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.ok).toBe(false);
+    expect(typeof res.body.error).toBe("string");
+  });
+
+  it("returns 400 for malformed JSON body", async () => {
+    const { bridge, port } = createBridge();
+    await bridge.ensureStarted();
+
+    // Send malformed JSON
+    const res = await new Promise<{ statusCode: number; body: Record<string, unknown> }>((resolve, reject) => {
+      const payload = "not-valid-json{{{";
+      const req = request(
+        {
+          hostname: "127.0.0.1",
+          port,
+          path: "/photoshop-bridge/register",
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "content-length": Buffer.byteLength(payload)
+          }
+        },
+        (innerRes) => {
+          let data = "";
+          innerRes.on("data", (chunk: Buffer) => {
+            data += chunk.toString("utf8");
+          });
+          innerRes.on("end", () => {
+            try {
+              resolve({
+                statusCode: innerRes.statusCode ?? 0,
+                body: JSON.parse(data) as Record<string, unknown>
+              });
+            } catch {
+              reject(new Error(`Failed to parse response: ${data}`));
+            }
+          });
+        }
+      );
+      req.on("error", reject);
+      req.write(payload);
+      req.end();
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.ok).toBe(false);
+  });
+
+  it("registration response includes allowScriptExecution flag", async () => {
+    const { bridge, port } = createBridge();
+    await bridge.ensureStarted();
+
+    const res = await httpPost(port, "/photoshop-bridge/register", {
+      token: TOKEN,
+      pluginName: "test",
+      pluginVersion: "1.0.0",
+      photoshopVersion: "25.0.0",
+      capabilities: []
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.allowScriptExecution).toBe(false);
+  });
+});
+
+describe("isAllowedOrigin", () => {
+  it("accepts valid localhost origins", () => {
+    expect(_isAllowedOrigin("http://127.0.0.1")).toBe(true);
+    expect(_isAllowedOrigin("http://127.0.0.1:47123")).toBe(true);
+    expect(_isAllowedOrigin("http://localhost")).toBe(true);
+    expect(_isAllowedOrigin("http://localhost:3000")).toBe(true);
+  });
+
+  it("rejects spoofed origins with prefix matching", () => {
+    expect(_isAllowedOrigin("http://127.0.0.1.evil.com")).toBe(false);
+    expect(_isAllowedOrigin("http://localhost.evil.com")).toBe(false);
+  });
+
+  it("rejects non-http protocols", () => {
+    expect(_isAllowedOrigin("https://127.0.0.1")).toBe(false);
+    expect(_isAllowedOrigin("ftp://127.0.0.1")).toBe(false);
+  });
+
+  it("rejects malformed and empty strings", () => {
+    expect(_isAllowedOrigin("")).toBe(false);
+    expect(_isAllowedOrigin("not-a-url")).toBe(false);
+    expect(_isAllowedOrigin("://127.0.0.1")).toBe(false);
+  });
+
+  it("rejects remote addresses", () => {
+    expect(_isAllowedOrigin("http://192.168.1.1")).toBe(false);
+    expect(_isAllowedOrigin("http://example.com")).toBe(false);
+  });
+});
+
+describe("compareSemver", () => {
+  it("compares standard semver correctly", () => {
+    expect(_compareSemver("1.0.0", "1.0.0")).toBe(0);
+    expect(_compareSemver("1.0.1", "1.0.0")).toBeGreaterThan(0);
+    expect(_compareSemver("0.3.0", "0.2.9")).toBeGreaterThan(0);
+    expect(_compareSemver("0.2.0", "0.3.0")).toBeLessThan(0);
+  });
+
+  it("handles pre-release tags by stripping them", () => {
+    expect(_compareSemver("1.0.0-beta", "1.0.0")).toBe(0);
+    expect(_compareSemver("1.0.0-alpha.1", "1.0.0")).toBe(0);
+    expect(_compareSemver("2.0.0-rc.1", "1.9.9")).toBeGreaterThan(0);
+  });
+
+  it("handles build metadata", () => {
+    expect(_compareSemver("1.0.0+build123", "1.0.0")).toBe(0);
+    expect(_compareSemver("1.0.0-beta+build", "1.0.0")).toBe(0);
+  });
+
+  it("handles missing segments", () => {
+    expect(_compareSemver("1.0", "1.0.0")).toBe(0);
+    expect(_compareSemver("1", "1.0.0")).toBe(0);
   });
 });

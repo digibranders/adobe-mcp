@@ -14,12 +14,14 @@ async function main(): Promise<void> {
 
   const logger = new StderrLogger(config.logLevel);
   const registry = new AdapterRegistry(config, logger);
-  const server = createMcpServer(config, registry, logger);
+  const { server, cleanup } = createMcpServer(config, registry, logger);
   const transport = new StdioServerTransport();
 
   const shutdown = async (): Promise<void> => {
     logger.info("Shutting down adobe-desktop-mcp");
     try {
+      // Close bridge connections before the MCP server to avoid dangling HTTP servers.
+      await cleanup();
       await server.close();
     } catch {
       // best-effort

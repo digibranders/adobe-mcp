@@ -300,6 +300,10 @@ function createIllustratorWrapperScript(inputPath: string, resultPath: string): 
 
   try {
     app.userInteractionLevel = UserInteractionLevel.DONTDISPLAYALERTS;
+    // Security note: eval() is intentional here. This ExtendScript wrapper runs inside
+    // Illustrator's scripting engine. For built-in tools, scriptSource comes from hardcoded
+    // templates (createOpenDocumentScript, etc.). User-supplied scripts via illustrator_run_script
+    // are gated by the ADOBE_MCP_ALLOW_SCRIPT_EXECUTION config flag at the MCP server level.
     var fn = eval("(function(input, setResult, helpers) {\\n" + __mcpPayload.scriptSource + "\\n})");
     var returned = fn(__mcpPayload.input, setResult, helpers);
     var finalResult = typeof __mcpResult !== "undefined" ? __mcpResult : returned;
@@ -373,6 +377,11 @@ export class IllustratorBridge {
   ) {}
 
   public async execute(request: IllustratorExecutionRequest): Promise<IllustratorExecutionResult> {
+    this.logger.info("Illustrator bridge: executing script", {
+      scriptLength: request.scriptSource.length,
+      timeoutMs: request.timeoutMs,
+      inputKeys: Object.keys(request.input)
+    });
     const sessionDirectory = await createSessionTempDirectory(this.tempRoot);
     const payloadPath = join(sessionDirectory, "input.json");
     const resultPath = join(sessionDirectory, "result.json");
